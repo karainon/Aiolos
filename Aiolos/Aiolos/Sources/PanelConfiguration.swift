@@ -12,46 +12,12 @@ import Foundation
 /// Allows to configure the appearance of the floating panel
 public extension Panel {
 
-    public struct Configuration {
-
-        public enum Edge: Int {
-            case top
-            case leading
-            case bottom
-            case trailing
-        }
-
-        public enum Position: Int {
-            case bottom
-            case leadingBottom
-            case trailingBottom
-        }
-
-        public enum PositionLogic: Int {
-            case respectSafeArea
-            case ignoreSafeArea
-
-            public static var respectAllSafeAreas: [Edge: PositionLogic] {
-                return [.top: .respectSafeArea, .leading: .respectSafeArea, .bottom: .respectSafeArea, .trailing: .respectSafeArea]
-            }
-
-            public static var ignoreAllSafeAreas: [Edge: PositionLogic] {
-                return [.top: .ignoreSafeArea, .leading: .ignoreSafeArea, .bottom: .ignoreSafeArea, .trailing: .ignoreSafeArea]
-            }
-        }
-
-        public enum Mode: Int {
-            case minimal
-            case compact
-            case expanded
-            case fullHeight
-        }
-
-        public enum GestureResizingMode: Int {
-            case disabled
-            case excludingContent
-            case includingContent
-        }
+    struct Configuration {
+        public typealias Mode = _PanelMode
+        public typealias Edge = _PanelEdge
+        public typealias Position = _PanelPosition
+        public typealias PositionLogic = _PanelPositionLogic
+        public typealias GestureResizingMode = _PanelGestureResizingMode
 
         public enum ResizeHandleMode {
             case hidden
@@ -67,6 +33,7 @@ public extension Panel {
             public var shadowColor: UIColor
             public var shadowOpacity: Float
             public var shadowOffset: UIOffset
+            public var shadowRadius: CGFloat
             public var resizeHandle: ResizeHandleMode
         }
 
@@ -78,7 +45,7 @@ public extension Panel {
         public var supportedModes: Set<Mode>
         public var gestureResizingMode: GestureResizingMode
         public var appearance: Appearance
-        public var horizontalPositioningEnabled: Bool { return self.supportedPositions.count > 1 }
+        public var isHorizontalPositioningEnabled: Bool
     }
 }
 
@@ -93,6 +60,7 @@ public extension Panel.Configuration {
                                     shadowColor: .black,
                                     shadowOpacity: 0.15,
                                     shadowOffset: UIOffset(horizontal: 0.0, vertical: 1.0),
+                                    shadowRadius: 3.0,
                                     resizeHandle: .visible(foregroundColor: UIColor.gray.withAlphaComponent(0.3), backgroundColor: .white))
 
         return Panel.Configuration(position: .bottom,
@@ -102,7 +70,8 @@ public extension Panel.Configuration {
                                    mode: .compact,
                                    supportedModes: [.compact, .expanded, .fullHeight],
                                    gestureResizingMode: .includingContent,
-                                   appearance: appearance)
+                                   appearance: appearance,
+                                   isHorizontalPositioningEnabled: false)
     }
 }
 
@@ -145,7 +114,54 @@ extension Panel.Configuration {
     }
 }
 
-extension Panel.Configuration.PositionLogic {
+// MARK: - Inner Types
+
+// we define these types here and use a typealias inside the Panel, to make them visible to ObjC and Swift
+@objc(PanelMode)
+public enum _PanelMode: Int {
+    case minimal
+    case compact
+    case expanded
+    case fullHeight
+}
+
+@objc(PanelEdge)
+public enum _PanelEdge: Int {
+    case top
+    case leading
+    case bottom
+    case trailing
+}
+
+@objc(PanelPosition)
+public enum _PanelPosition: Int {
+    case bottom
+    case leadingBottom
+    case trailingBottom
+}
+
+@objc(PanelPositionLogic)
+public enum _PanelPositionLogic: Int {
+    case respectSafeArea
+    case ignoreSafeArea
+
+    public static var respectAllSafeAreas: [Panel.Configuration.Edge: Panel.Configuration.PositionLogic] {
+        return [.top: .respectSafeArea, .leading: .respectSafeArea, .bottom: .respectSafeArea, .trailing: .respectSafeArea]
+    }
+
+    public static var ignoreAllSafeAreas: [Panel.Configuration.Edge: Panel.Configuration.PositionLogic] {
+        return [.top: .ignoreSafeArea, .leading: .ignoreSafeArea, .bottom: .ignoreSafeArea, .trailing: .ignoreSafeArea]
+    }
+}
+
+@objc(PanelGestureResizingMode)
+public enum _PanelGestureResizingMode: Int {
+    case disabled
+    case excludingContent
+    case includingContent
+}
+
+extension _PanelPositionLogic {
 
     func applyingInsets(of view: UIView, to insets: NSDirectionalEdgeInsets, edge: Panel.Configuration.Edge) -> NSDirectionalEdgeInsets {
         var insets = insets

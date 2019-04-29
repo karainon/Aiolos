@@ -98,16 +98,16 @@ extension ViewController: PanelSizeDelegate {
     }
 }
 
-// MARK: - PanelAnimationDelegate
+// MARK: - PanelResizeDelegate
 
-extension ViewController: PanelAnimationDelegate {
+extension ViewController: PanelResizeDelegate {
 
-    func panel(_ panel: Panel, didStartTransitioningIn direction: Panel.Direction) {
-        print("Panel did start transitioning in \(direction) direction")
+    func panelDidStartResizing(_ panel: Panel) {
+        print("Panel did start resizing")
     }
 
-    func panel(_ panel: Panel, willTransitionTo size: CGSize) {
-        print("Panel will transition to size \(size)")
+    func panel(_ panel: Panel, willResizeTo size: CGSize) {
+        print("Panel will resize to size \(size)")
     }
 
     func panel(_ panel: Panel, willTransitionFrom oldMode: Panel.Configuration.Mode?, to newMode: Panel.Configuration.Mode, with coordinator: PanelTransitionCoordinator) {
@@ -120,25 +120,69 @@ extension ViewController: PanelAnimationDelegate {
             print("Completed panel transition to \(newMode)")
         })
     }
-    
-    func panel(_ panel: Panel, shouldMoveTo frame: CGRect) -> Bool {
+}
+
+// MARK: - PanelRepositionDelegate
+
+extension ViewController: PanelRepositionDelegate {
+
+    func panelDidStartMoving(_ panel: Panel) {
+        print("Panel did start moving")
+    }
+
+    func panel(_ panel: Panel, willMoveTo frame: CGRect) -> Bool {
+        print("Panel will move to frame \(frame)")
+
+        // we can prevent the panel from begin dragged
+        // returning false will result in a rubber-band effect
         return true
     }
-    
-    func panel(_ panel: Panel, didMoveFrom oldFrame: CGRect, to newFrame: CGRect, with coordinator: PanelTransitionCoordinator) -> PanelTransitionCoordinator.Instruction {
-        guard let context = coordinator.direction.context else { return .none }
 
-        print("Panel did move to frame \(newFrame)")
-        
+    func panel(_ panel: Panel, didStopMoving endFrame: CGRect, with context: PanelRepositionContext) -> PanelRepositionContext.Instruction {
+        print("Panel did move to frame \(endFrame)")
+
         let panelShouldHide = context.isMovingPastLeadingEdge || context.isMovingPastTrailingEdge
-        if panelShouldHide {
-            return .hide
-        } else {
-            return .updatePosition(context.targetPosition)
-        }
+        guard !panelShouldHide else { return .hide }
+
+        return .updatePosition(context.targetPosition)
+    }
+
+    func panel(_ panel: Panel, willTransitionFrom oldPosition: Panel.Configuration.Position, to newPosition: Panel.Configuration.Position, with coordinator: PanelTransitionCoordinator) {
+        print("Panel is transitioning from \(String(describing: oldPosition)) to position \(newPosition)")
+
+        // we can animate things along the way
+        coordinator.animateAlongsideTransition({
+            print("Animating alongside of panel transition")
+        }, completion: { animationPosition in
+            print("Completed panel transition to \(newPosition)")
+        })
+    }
+
+    func panelWillTransitionToHiddenState(_ panel: Panel, with coordinator: PanelTransitionCoordinator) {
+        print("Panel is transitioning to hidden state")
+
+        // we can animate things along the way
+        coordinator.animateAlongsideTransition({
+            print("Animating alongside of panel transition")
+        }, completion: { animationPosition in
+            print("Completed panel transition to hidden state")
+        })
     }
 }
 
+// MARK: - UIGestureRecognizerDelegate
+
+extension ViewController: UIGestureRecognizerDelegate {
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let contentNavigationController = self.panelController.contentViewController as? UINavigationController else { return true }
+        guard let tableViewController = contentNavigationController.topViewController as? UITableViewController else { return true }
+
+        // Prevent swipes on the table view being triggered as the panel is being dragged horizontally
+        // More info: https://github.com/IdeasOnCanvas/Aiolos/issues/23
+        return otherGestureRecognizer.view !== tableViewController.tableView
+    }
+}
 
 // MARK: - Private
 
@@ -154,7 +198,9 @@ private extension ViewController {
         contentNavigationController.view.bringSubviewToFront(contentNavigationController.navigationBar)
 
         panelController.sizeDelegate = self
-        panelController.animationDelegate = self
+        panelController.resizeDelegate = self
+        panelController.repositionDelegate = self
+        panelController.gestureDelegate = self
         panelController.contentViewController = contentNavigationController
 
         return panelController
@@ -182,10 +228,12 @@ private extension ViewController {
 
         if self.traitCollection.userInterfaceIdiom == .pad {
             configuration.supportedPositions = [.leadingBottom, .trailingBottom]
+            configuration.isHorizontalPositioningEnabled = true
             configuration.appearance.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         } else {
             configuration.supportedModes = [.minimal, .compact, .expanded, .fullHeight]
             configuration.supportedPositions = [configuration.position]
+            configuration.isHorizontalPositioningEnabled = false
 
             if traitCollection.hasNotch {
                 configuration.appearance.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]

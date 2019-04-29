@@ -32,7 +32,8 @@ public final class Panel: UIViewController {
     @objc private(set) public lazy var panelView: PanelView = self.makePanelView()
     @objc public var isVisible: Bool { return self.parent != nil && self.animator.isTransitioningFromParent == false }
     public weak var sizeDelegate: PanelSizeDelegate?
-    public weak var animationDelegate: PanelAnimationDelegate?
+    public weak var resizeDelegate: PanelResizeDelegate?
+    public weak var repositionDelegate: PanelRepositionDelegate?
     public weak var gestureDelegate: UIGestureRecognizerDelegate?
     public weak var accessibilityDelegate: PanelAccessibilityDelegate? {
         didSet {
@@ -195,6 +196,17 @@ public extension Panel {
     }
 }
 
+// MARK: - ObjC Compatibility
+
+public extension Panel {
+
+    @objc(isInMode:)
+    @available(swift, obsoleted: 1.0)
+    func isInMode(_ mode: Configuration.Mode) -> Bool {
+        return self.configuration.mode == mode
+    }
+}
+
 // MARK: - Internal
 
 internal extension Panel {
@@ -227,6 +239,21 @@ internal extension Panel {
         }
 
         return CGSize(width: width, height: height)
+    }
+
+    func horizontalOffset(at position: Panel.Configuration.Position) -> CGFloat {
+        let originalPosition = self.configuration.position
+        guard originalPosition != position else { return 0 }
+
+        let distance = self.constraints.effectiveBounds.width - self.view.frame.width
+        switch position {
+        case .leadingBottom:
+            return self.view.isRTL ? distance : -distance
+        case .trailingBottom:
+            return self.view.isRTL ? -distance : distance
+        default:
+            return 0.0
+        }
     }
 
     func fixNavigationBarLayoutMargins() {
@@ -275,6 +302,7 @@ private extension Panel {
 
     func makeResizeHandle() -> ResizeHandle {
         let handle = ResizeHandle(configuration: self.configuration)
+        handle.accessibilityIdentifier = "Aiolos.ResizeHandle"
         handle.accessibilityActivateAction = { [weak self] in
             guard let self = self else { return false }
 
@@ -346,6 +374,12 @@ private extension Panel {
         let positionChanged = oldConfiguration.position != newConfiguration.position
         let marginsChanged = oldConfiguration.margins != newConfiguration.margins
         let positionLogicChanged = oldConfiguration.positionLogic != newConfiguration.positionLogic
+        let gestureResizingModeChanged = oldConfiguration.gestureResizingMode != newConfiguration.gestureResizingMode
+        let horizontalPositioningChanged = oldConfiguration.isHorizontalPositioningEnabled != newConfiguration.isHorizontalPositioningEnabled
+
+        if modeChanged || positionChanged || marginsChanged || positionLogicChanged || gestureResizingModeChanged || horizontalPositioningChanged {
+            self.gestures.cancel()
+        }
 
         if modeChanged || positionChanged {
             let size = self.size(for: newConfiguration.mode)

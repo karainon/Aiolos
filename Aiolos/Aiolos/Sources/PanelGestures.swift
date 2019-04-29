@@ -15,7 +15,7 @@ final class PanelGestures: NSObject {
     private unowned let panel: Panel
     
     private lazy var verticalPan: PanGestureRecognizer = self.makeVerticalPanGestureRecognizer()
-    private lazy var horizontalPan: UIPanGestureRecognizer = self.makeHorizontalPanGestureRecognizer()
+    private lazy var horizontalPan: HorizontalPanGestureRecognizer = self.makeHorizontalPanGestureRecognizer()
     private lazy var verticalHandler: VerticalHandler = VerticalHandler(gestures: self)
     private lazy var horizontalHandler: HorizontalHandler = HorizontalHandler(gestures: self)
     
@@ -44,9 +44,8 @@ final class PanelGestures: NSObject {
     }
 
     func configure(with configuration: Panel.Configuration) {
-        self.cancel()
         self.isVerticalPanEnabled = configuration.gestureResizingMode != .disabled
-        self.isHorizontalPanEnabled = configuration.horizontalPositioningEnabled
+        self.isHorizontalPanEnabled = configuration.isHorizontalPositioningEnabled
     }
 
     func cancel() {
@@ -165,7 +164,7 @@ private extension PanelGestures {
         }
         
         private func handlePanStarted(_ pan: UIPanGestureRecognizer) {
-            self.panel.animator.notifyDelegateOfTransition(in: .horizontal)
+            self.panel.animator.notifyDelegateOfRepositioning()
             self.gestures.updateResizeHandle()
         }
         
@@ -178,7 +177,8 @@ private extension PanelGestures {
             
             let translation = pan.translation(in: parentView)
             let transformation = CGAffineTransform(translationX: translation.x, y: 0.0)
-            let targetFrame = self.panel.view.frame.applying(transformation)
+            let originalFrame = self.panel.view.frame.applying(self.panel.view.transform.inverted())
+            let targetFrame = originalFrame.applying(transformation)
             let moveAllowed = self.panel.animator.askDelegateAboutMove(to: targetFrame)
             let xOffset = dragOffset(for: translation, moveAllowed: moveAllowed)
             guard xOffset != 0.0 else { return }
@@ -193,21 +193,25 @@ private extension PanelGestures {
             let originalFrame = self.panel.view.frame.applying(self.panel.view.transform.inverted())
             let offset = pan.translation(in: parentView).x
             let velocity = pan.velocity(in: parentView).x
-            let context = PanelTransitionCoordinator.HorizontalTransitionContext(panel: self.panel, parentView: parentView, originalFrame: originalFrame, offset: offset, velocity: velocity)
+            let context = PanelRepositionContext(panel: self.panel, parentView: parentView, originalFrame: originalFrame, offset: offset, velocity: velocity)
             
-            let instruction = self.panel.animator.notifyDelegateOfMove(from: originalFrame, to: self.panel.view.frame, context: context)
+            let instruction = self.panel.animator.notifyDelegateOfMove(to: self.panel.view.frame, context: context)
             switch instruction {
             case .none:
                 let originalPosition = self.panel.configuration.position
                 let velocity = self.initialVelocity(with: context, targetPosition: originalPosition)
+                self.panel.animator.notifyDelegateOfMove(from: originalPosition, to: originalPosition)
                 self.animate(to: originalPosition, initialVelocity: velocity)
                 
             case .updatePosition(let position):
+                let originalPosition = self.panel.configuration.position
                 let velocity = self.initialVelocity(with: context, targetPosition: position)
+                self.panel.animator.notifyDelegateOfMove(from: originalPosition, to: position)
                 self.animate(to: position, initialVelocity: velocity)
                 
             case .hide:
                 let velocity = self.initialVelocityForHiding(with: context)
+                self.panel.animator.notifyDelegateOfHide()
                 self.animateToHide(initialVelocity: velocity)
             }
             
@@ -226,38 +230,23 @@ private extension PanelGestures {
             self.gestures.updateResizeHandle()
         }
         
-        private func initialVelocity(with context: PanelTransitionCoordinator.HorizontalTransitionContext, targetPosition: Panel.Configuration.Position) -> CGFloat {
+        private func initialVelocity(with context: PanelRepositionContext, targetPosition: Panel.Configuration.Position) -> CGFloat {
             let originalPosition = self.panel.configuration.position
-            let targetOffset = self.offset(for: targetPosition)
+            let targetOffset = self.panel.horizontalOffset(at: targetPosition)
             
             let distance = originalPosition != targetPosition ? targetOffset - context.offset : context.offset
             return abs(context.velocity / distance)
         }
         
-        private func initialVelocityForHiding(with context: PanelTransitionCoordinator.HorizontalTransitionContext) -> CGFloat {
+        private func initialVelocityForHiding(with context: PanelRepositionContext) -> CGFloat {
             let transformation = self.panel.animator.transform(for: .horizontal, size: self.panel.view.frame.size)
             let distance = transformation.tx - context.offset
             
             return abs(context.velocity / distance)
         }
 
-        private func offset(for position: Panel.Configuration.Position) -> CGFloat {
-            let originalPosition = self.panel.configuration.position
-            guard originalPosition != position else { return 0 }
-
-            let distance = self.panel.constraints.effectiveBounds.width - self.panel.view.frame.width
-            switch position {
-            case .leadingBottom:
-                return self.panel.view.isRTL ? distance : -distance
-            case .trailingBottom:
-                return self.panel.view.isRTL ? -distance : distance
-            default:
-                return 0.0
-            }
-        }
-
         private func animate(to targetPosition: Panel.Configuration.Position, initialVelocity: CGFloat) {
-            let targetOffset = self.offset(for: targetPosition)
+            let targetOffset = self.panel.horizontalOffset(at: targetPosition)
             let timing = Animation.overdamped.makeTiming(with: initialVelocity)
 
             self.panel.constraints.prepareForHorizontalPanEndAnimation()
@@ -365,7 +354,7 @@ private extension PanelGestures {
                 }
             }
 
-            self.panel.animator.notifyDelegateOfTransition(in: .vertical)
+            self.panel.animator.notifyDelegateOfResizing()
 
             return true
         }
@@ -425,7 +414,6 @@ private extension PanelGestures {
             self.cleanUp(pan: pan)
             
             let size = self.panel.size(for: originalMode)
-            self.panel.animator.notifyDelegateOfTransition(from: originalMode, to: originalMode)
             self.panel.constraints.updateForPanCancelled(with: size)
             if currentHeight != size.height {
                 self.panel.animator.notifyDelegateOfTransition(to: size)
@@ -576,8 +564,8 @@ private extension PanelGestures {
         return pan
     }
     
-    func makeHorizontalPanGestureRecognizer() -> UIPanGestureRecognizer {
-        let pan = UIPanGestureRecognizer(target: self.horizontalHandler, action: #selector(HorizontalHandler.handlePan))
+    func makeHorizontalPanGestureRecognizer() -> HorizontalPanGestureRecognizer {
+        let pan = HorizontalPanGestureRecognizer(target: self.horizontalHandler, action: #selector(HorizontalHandler.handlePan))
         pan.delegate = self
         pan.cancelsTouchesInView = true
         return pan

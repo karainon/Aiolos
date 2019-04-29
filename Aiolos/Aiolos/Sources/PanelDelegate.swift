@@ -17,22 +17,35 @@ public protocol PanelSizeDelegate: AnyObject {
     func panel(_ panel: Panel, sizeForMode mode: Panel.Configuration.Mode) -> CGSize
 }
 
-public protocol PanelAnimationDelegate: AnyObject {
+public protocol PanelResizeDelegate: AnyObject {
 
-    /// Tells the delegate that the `panel` has started transition in a specific direction
-    func panel(_ panel: Panel, didStartTransitioningIn direction: Panel.Direction)
+    /// Tells the delegate that the `panel` has started resizing
+    func panelDidStartResizing(_ panel: Panel)
 
-    /// Tells the delegate that the `panel` is transitioning to a specific size
-    func panel(_ panel: Panel, willTransitionTo size: CGSize)
+    /// Tells the delegate that the `panel` is resizing to a specific size
+    func panel(_ panel: Panel, willResizeTo size: CGSize)
 
     /// Tells the delegate that the `panel` is transitioning to a specific mode
     func panel(_ panel: Panel, willTransitionFrom oldMode: Panel.Configuration.Mode?, to newMode: Panel.Configuration.Mode, with coordinator: PanelTransitionCoordinator)
+}
 
-    /// Asks the delegate if the `panel` can move to a specific frame
-    func panel(_ panel: Panel, shouldMoveTo frame: CGRect) -> Bool
+public protocol PanelRepositionDelegate: AnyObject {
 
-    /// Tells the delegate that the `panel` did move to a specific frame
-    func panel(_ panel: Panel, didMoveFrom oldFrame: CGRect, to newFrame: CGRect, with coordinator: PanelTransitionCoordinator) -> PanelTransitionCoordinator.Instruction
+    /// Tells the delegate that the `panel` has started moving
+    func panelDidStartMoving(_ panel: Panel)
+
+    /// Tells the delegate that the `panel` will move to a specific frame
+    /// Returning false will result in a rubber-band effect
+    func panel(_ panel: Panel, willMoveTo frame: CGRect) -> Bool
+
+    /// Tells the delegate that the `panel` did stop moving
+    func panel(_ panel: Panel, didStopMoving endFrame: CGRect, with context: PanelRepositionContext) -> PanelRepositionContext.Instruction
+
+    // Tells the delegate that the `panel` is transitioning to a specific position
+    func panel(_ panel: Panel, willTransitionFrom oldPosition: Panel.Configuration.Position, to newPosition: Panel.Configuration.Position, with coordinator: PanelTransitionCoordinator)
+
+    // Tells the delegate that the `panel` is transitioning to a hidden state
+    func panelWillTransitionToHiddenState(_ panel: Panel, with coordinator: PanelTransitionCoordinator)
 }
 
 public protocol PanelAccessibilityDelegate: AnyObject {

@@ -61,47 +61,69 @@ final class PanelAnimator {
         animator.finishAnimation(at: .end)
     }
 
-    func notifyDelegateOfTransition(in direction: Panel.Direction) {
-        guard let animationDelegate = self.panel.animationDelegate else { return }
+    func notifyDelegateOfResizing() {
+        guard let resizeDelegate = self.panel.resizeDelegate else { return }
         guard self.panel.isVisible else { return }
 
-        animationDelegate.panel(self.panel, didStartTransitioningIn: .horizontal)
+        resizeDelegate.panelDidStartResizing(self.panel)
     }
 
     func notifyDelegateOfTransition(to size: CGSize) {
-        guard let animationDelegate = self.panel.animationDelegate else { return }
+        guard let animationDelegate = self.panel.resizeDelegate else { return }
         guard self.panel.isVisible else { return }
 
-        animationDelegate.panel(self.panel, willTransitionTo: size)
-        if let contentViewController = self.panel.contentViewController as? PanelAnimationDelegate {
-            contentViewController.panel(self.panel, willTransitionTo: size)
+        animationDelegate.panel(self.panel, willResizeTo: size)
+        if let contentViewController = self.panel.contentViewController as? PanelResizeDelegate {
+            contentViewController.panel(self.panel, willResizeTo: size)
         }
     }
 
     func notifyDelegateOfTransition(from oldMode: Panel.Configuration.Mode?, to newMode: Panel.Configuration.Mode) {
-        guard let animationDelegate = self.panel.animationDelegate else { return }
+        guard let animationDelegate = self.panel.resizeDelegate else { return }
         guard self.panel.isVisible else { return }
 
         let transitionCoordinator = PanelTransitionCoordinator(animator: self, direction: .vertical)
         animationDelegate.panel(self.panel, willTransitionFrom: oldMode, to: newMode, with: transitionCoordinator)
-        if let contentViewController = self.panel.contentViewController as? PanelAnimationDelegate {
+        if let contentViewController = self.panel.contentViewController as? PanelResizeDelegate {
             contentViewController.panel(self.panel, willTransitionFrom: oldMode, to: newMode, with: transitionCoordinator)
         }
     }
-    
+
+    func notifyDelegateOfRepositioning() {
+        guard let repositionDelegate = self.panel.repositionDelegate else { return }
+        guard self.panel.isVisible else { return }
+
+        repositionDelegate.panelDidStartMoving(self.panel)
+    }
+
     func askDelegateAboutMove(to frame: CGRect) -> Bool {
-        guard let animationDelegate = self.panel.animationDelegate else { return false }
+        guard let repositionDelegate = self.panel.repositionDelegate else { return false }
         guard self.panel.isVisible else { return false }
         
-        return animationDelegate.panel(self.panel, shouldMoveTo: frame)
+        return repositionDelegate.panel(self.panel, willMoveTo: frame)
     }
     
-    func notifyDelegateOfMove(from oldFrame: CGRect, to newFrame: CGRect, context: PanelTransitionCoordinator.HorizontalTransitionContext) -> PanelTransitionCoordinator.Instruction {
-        guard let animationDelegate = self.panel.animationDelegate else { return .none }
+    func notifyDelegateOfMove(to endFrame: CGRect, context: PanelRepositionContext) -> PanelRepositionContext.Instruction {
+        guard let repositionDelegate = self.panel.repositionDelegate else { return .none }
         guard self.panel.isVisible else { return .none }
-        
-        let transitionCoordinator = PanelTransitionCoordinator(animator: self, direction: .horizontal(context: context))
-        return animationDelegate.panel(self.panel, didMoveFrom: oldFrame, to: newFrame, with: transitionCoordinator)
+
+        return repositionDelegate.panel(self.panel, didStopMoving: endFrame, with: context)
+    }
+
+    func notifyDelegateOfMove(from oldPosition: Panel.Configuration.Position, to newPosition: Panel.Configuration.Position) {
+        guard let repositionDelegate = self.panel.repositionDelegate else { return }
+        guard self.panel.isVisible else { return }
+
+        let transitionCoordinator = PanelTransitionCoordinator(animator: self, direction: .horizontal)
+        repositionDelegate.panel(self.panel, willTransitionFrom: oldPosition, to: newPosition, with: transitionCoordinator)
+    }
+
+    func notifyDelegateOfHide() {
+        guard let repositionDelegate = self.panel.repositionDelegate else { return }
+        guard self.panel.isVisible else { return }
+
+        let transitionCoordinator = PanelTransitionCoordinator(animator: self, direction: .horizontal)
+        repositionDelegate.panelWillTransitionToHiddenState(self.panel, with: transitionCoordinator)
     }
 }
 
